@@ -6,6 +6,9 @@ import com.juego.system.AudioSystem;
 import com.juego.system.DamageSystem;
 import com.juego.physics.CollisionManager;
 import com.juego.entity.EnemyManager;
+import javax.swing.JPanel;
+import javax.swing.JLabel;
+import java.awt.BorderLayout;
 
 public class GameplayView implements View {
     private Hero hero;
@@ -13,6 +16,7 @@ public class GameplayView implements View {
     private EnemyManager enemyManager;
     private CollisionManager collisionManager;
     private AudioSystem audioSystem;
+    private JPanel panel;
 
     private boolean isRunningGame;
 
@@ -21,6 +25,10 @@ public class GameplayView implements View {
         this.damageSystem = new DamageSystem();
         this.enemyManager = new EnemyManager(20, 40);
         this.collisionManager = new CollisionManager(64);
+        
+        this.panel = new JPanel(new BorderLayout());
+        this.panel.add(new JLabel("Game is Running...", JLabel.CENTER), BorderLayout.CENTER);
+        
         this.initGame();
     }
 
@@ -39,6 +47,11 @@ public class GameplayView implements View {
     @Override
     public int getLevel() {
         return 1;
+    }
+
+    @Override
+    public JPanel getPanel() {
+        return this.panel;
     }
 
     @Override

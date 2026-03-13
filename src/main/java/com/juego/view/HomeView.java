@@ -1,15 +1,40 @@
 package com.juego.view;
 
 import com.juego.core.GameManager;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import java.awt.BorderLayout;
+import java.awt.Font;
+import java.awt.event.ActionEvent;
 
 public class HomeView implements View {
+    private JPanel panel;
 
     public HomeView() {
-        System.out.println("HomeView created");
+        this.panel = new JPanel(new BorderLayout());
+        this.render();
     }
 
     private void render() {
-        System.out.println("HomeView rendered");
+        JLabel title = new JLabel("Cruzada de Hierro", JLabel.CENTER);
+        title.setFont(new Font("Serif", Font.BOLD, 48));
+        panel.add(title, BorderLayout.CENTER);
+
+        JButton startButton = new JButton("Comenzar Juego");
+        startButton.setFont(new Font("SansSerif", Font.PLAIN, 24));
+        startButton.addActionListener((ActionEvent e) -> startGame());
+        
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(startButton);
+        
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+        System.out.println("UI para HomeView construida y renderizada");
+    }
+
+    @Override
+    public JPanel getPanel() {
+        return this.panel;
     }
 
     @Override
@@ -23,8 +48,9 @@ public class HomeView implements View {
     }
 
     public void startGame() {
-        GameManager.getInstance().addView(new GameplayView());
         System.out.println("Starting game...");
+        GameManager.getInstance().addView(new GameplayView());
+        GameManager.getInstance().removeView(this);
     }
 
     public void exitGame() {

@@ -1,6 +1,7 @@
 package com.juego.core;
 
 import com.juego.view.View;
+import com.juego.view.GameWindow;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,10 +15,13 @@ public class GameManager {
 
     private List<View> currentViews;
     private List<Process> processQueue;
+    private GameWindow window;
 
     private GameManager() {
         currentViews = new ArrayList<>();
         processQueue = new ArrayList<>();
+        window = new GameWindow("Cruzada de Hierro", 800, 600);
+        window.setVisible(true);
     }
 
     public static GameManager getInstance() {
@@ -29,6 +33,10 @@ public class GameManager {
 
     public void addView(View view) {
         currentViews.add(view);
+        window.getContentPane().removeAll();
+        window.add(view.getPanel());
+        window.revalidate();
+        window.repaint();
     }
 
     public void removeView(View view) {
@@ -46,5 +54,9 @@ public class GameManager {
 
     public List<View> getCurrentViews() {
         return currentViews;
+    }
+
+    public GameWindow getWindow() {
+        return window;
     }
 }
