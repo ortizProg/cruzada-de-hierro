@@ -56,8 +56,8 @@ public abstract class Entity implements Collidable {
         return y;
     }
     
-    // Método default getter para health o internals si es necesario (Encapsulamiento)
-    float getHealth() {
+    // Método público getter para health (Encapsulamiento)
+    public float getHealth() {
         return this.health;
     }
 }

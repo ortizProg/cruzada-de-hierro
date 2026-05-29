@@ -9,19 +9,33 @@ import com.juego.physics.Collider;
  */
 public class Arrow implements Collidable {
     private float x, y;
+    private float dirX, dirY;
     private float speed;
     private int damage;
     private Collider hitBox;
     private boolean active;
 
     public Arrow() {
-        this.hitBox = new Collider(this, 0, 0, 10, 2);
+        this.hitBox = new Collider(this, 0, 0, 10, 10);
         this.active = false;
     }
 
-    public void activate(float startX, float startY, float speed, int damage) {
+    public void activate(float startX, float startY, float dirX, float dirY, float speed, int damage) {
         this.x = startX;
         this.y = startY;
+        this.dirX = dirX;
+        this.dirY = dirY;
+        
+        // Normalizar la dirección
+        float length = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+        if (length > 0) {
+            this.dirX = dirX / length;
+            this.dirY = dirY / length;
+        } else {
+            this.dirX = 1;
+            this.dirY = 0;
+        }
+
         this.speed = speed;
         this.damage = damage;
         this.active = true;
@@ -42,7 +56,8 @@ public class Arrow implements Collidable {
     }
 
     private void calculateTrajectory() {
-        this.x += speed;
+        this.x += dirX * speed;
+        this.y += dirY * speed;
     }
 
     @Override

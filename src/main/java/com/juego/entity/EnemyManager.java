@@ -14,12 +14,22 @@ public class EnemyManager {
     private List<Enemy> activeEnemies;
     private int maxEnemyOnScreen;
     private int maxEnemyInPool;
+    private List<EnemyDeathObserver> deathObservers;
 
     public EnemyManager(int maxEnemyOnScreen, int maxEnemyInPool) {
         this.maxEnemyOnScreen = maxEnemyOnScreen;
         this.maxEnemyInPool = maxEnemyInPool;
         this.enemyPool = new ArrayList<>();
         this.activeEnemies = new ArrayList<>();
+        this.deathObservers = new ArrayList<>();
+    }
+
+    public void addDeathObserver(EnemyDeathObserver observer) {
+        deathObservers.add(observer);
+    }
+
+    public void removeDeathObserver(EnemyDeathObserver observer) {
+        deathObservers.remove(observer);
     }
 
     public void addEnemies() {
@@ -50,6 +60,11 @@ public class EnemyManager {
                 enemyPool.add(enemy);
             }
             System.out.println("Enemy returned to pool");
+            
+            // Notificar a los observadores
+            for (EnemyDeathObserver observer : deathObservers) {
+                observer.onEnemyKilled(enemy);
+            }
         }
     }
     

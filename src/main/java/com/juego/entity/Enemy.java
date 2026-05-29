@@ -6,9 +6,15 @@ package com.juego.entity;
  * para crear variaciones de enemigos (Zombies, skeletons) sin modificar el núcleo.
  */
 public abstract class Enemy extends Entity {
+    protected EnemyFlyweight flyweight;
     
-    public Enemy(float x, float y, float health, float speedMovement) {
-        super(x, y, health, speedMovement);
+    public Enemy(float x, float y, EnemyFlyweight flyweight) {
+        super(x, y, flyweight.getBaseHealth(), flyweight.getBaseSpeed());
+        this.flyweight = flyweight;
+    }
+    
+    public EnemyFlyweight getFlyweight() {
+        return flyweight;
     }
     
     /**
@@ -18,6 +24,6 @@ public abstract class Enemy extends Entity {
         // En una implementación completa se requeriría actualizar x e y a través de un setter o move.
         // Debido al encapsulamiento, move es la forma estándar de alterar la posición, 
         // pero un reset de estado es preferible.
-        this.increaseHealth(100); // Restablecer salud, por ejemplo
+        this.increaseHealth(flyweight.getBaseHealth()); // Restablecer salud usando el flyweight
     }
 }
