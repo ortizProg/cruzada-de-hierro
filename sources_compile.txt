@@ -1,4 +1,4 @@
-﻿C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\Game.java
+C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\Game.java
 C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\Main.java
 C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\audio\AudioClip.java
 C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\audio\AudioManager.java
@@ -58,6 +58,3 @@ C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\
 C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\weapon\IWeapon.java
 C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\weapon\ObjectPool.java
 C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\main\java\com\juego\weapon\Sword.java
-C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\test\java\com\juego\GameTest.java
-C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\test\java\com\juego\HeroStateTest.java
-C:\Users\santi\OneDrive\Escritorio\proyecto-semestre-actual\juego-patrones\game\src\test\java\com\juego\ScoreManagerTest.java

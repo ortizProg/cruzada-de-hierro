@@ -16,6 +16,8 @@ public class Hero extends Entity {
     private long lastDashTime;
     private Vector2 facingDirection;
     private HeroState currentState;
+    private float vy = 0.0f;
+    private boolean onGround = false;
 
     public Hero(float x, float y, float health, float speedMovement, IWeapon initialWeapon) {
         super(x, y, health, speedMovement);
@@ -55,6 +57,10 @@ public class Hero extends Entity {
         this.equippedWeapon = newWeapon;
     }
 
+    public IWeapon getEquippedWeapon() {
+        return equippedWeapon;
+    }
+
     public Vector2 getFacingDirection() {
         return facingDirection;
     }
@@ -82,6 +88,8 @@ public class Hero extends Entity {
         if (currentJumps >= 2)
             return;
         incrementJump();
+        this.vy = -12.0f; // Impulso vertical hacia arriba
+        this.onGround = false;
     }
 
     public void dash() {
@@ -103,5 +111,21 @@ public class Hero extends Entity {
 
     public int getJumps() {
         return this.currentJumps;
+    }
+
+    public float getVy() {
+        return vy;
+    }
+
+    public void setVy(float vy) {
+        this.vy = vy;
+    }
+
+    public boolean isOnGround() {
+        return onGround;
+    }
+
+    public void setOnGround(boolean onGround) {
+        this.onGround = onGround;
     }
 }

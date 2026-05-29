@@ -3,10 +3,12 @@ package com.juego.entity;
 /**
  * Clase base para los Enemigos.
  * Hereda de Entity, aplicando el Single Responsibility Principle y Open/Closed Principle
- * para crear variaciones de enemigos (Zombies, skeletons) sin modificar el núcleo.
+ * para crear variaciones de enemigos (Zombies, Skeletons) sin modificar el núcleo.
  */
 public abstract class Enemy extends Entity {
     protected EnemyFlyweight flyweight;
+    private float vy = 0.0f;
+    private boolean onGround = false;
     
     public Enemy(float x, float y, EnemyFlyweight flyweight) {
         super(x, y, flyweight.getBaseHealth(), flyweight.getBaseSpeed());
@@ -17,6 +19,22 @@ public abstract class Enemy extends Entity {
         return flyweight;
     }
     
+    public float getVy() {
+        return vy;
+    }
+
+    public void setVy(float vy) {
+        this.vy = vy;
+    }
+
+    public boolean isOnGround() {
+        return onGround;
+    }
+
+    public void setOnGround(boolean onGround) {
+        this.onGround = onGround;
+    }
+
     /**
      * Método para activar el enemigo cuando sale del pool
      */

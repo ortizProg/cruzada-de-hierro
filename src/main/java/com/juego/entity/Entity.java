@@ -40,6 +40,11 @@ public abstract class Entity implements Collidable {
         this.y += dy * speedMovement;
     }
 
+    public void setPosition(float x, float y) {
+        this.x = x;
+        this.y = y;
+    }
+
     // Implementación de Collidable
     @Override
     public Collider getCollider() {

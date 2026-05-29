@@ -19,6 +19,51 @@ public class StunnedEnemyDecorator extends Enemy {
     }
 
     @Override
+    public float getAbsoluteX() {
+        return decoratedEnemy.getAbsoluteX();
+    }
+
+    @Override
+    public float getAbsoluteY() {
+        return decoratedEnemy.getAbsoluteY();
+    }
+
+    @Override
+    public com.juego.physics.Collider getCollider() {
+        return decoratedEnemy.getCollider();
+    }
+
+    @Override
+    public float getHealth() {
+        return decoratedEnemy.getHealth();
+    }
+
+    @Override
+    public void reduceHealth(float amount) {
+        decoratedEnemy.reduceHealth(amount);
+    }
+
+    @Override
+    public float getVy() {
+        return decoratedEnemy.getVy();
+    }
+
+    @Override
+    public void setVy(float vy) {
+        decoratedEnemy.setVy(vy);
+    }
+
+    @Override
+    public boolean isOnGround() {
+        return decoratedEnemy.isOnGround();
+    }
+
+    @Override
+    public void setOnGround(boolean onGround) {
+        decoratedEnemy.setOnGround(onGround);
+    }
+
+    @Override
     public void move(float dx, float dy) {
         if (isStunned()) {
             System.out.println("Decorator Active: " + flyweight.getType() + " is STUNNED and cannot move!");

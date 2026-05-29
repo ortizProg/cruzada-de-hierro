@@ -26,8 +26,18 @@ import com.juego.audio.AudioManager;
 import com.juego.core.ScoreManager;
 import com.juego.entity.EnemyRegistry;
 import com.juego.weapon.Arrow;
+import com.juego.physics.LevelBlock;
+import javax.swing.JOptionPane;
 import java.util.ArrayList;
 import java.util.List;
+
+import java.awt.Color;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.GradientPaint;
+import java.awt.Font;
+import java.awt.BasicStroke;
 
 public class GameplayView implements View {
     private Hero hero;
@@ -46,12 +56,28 @@ public class GameplayView implements View {
 
     private boolean isRunningGame;
 
+    // Campos añadidos para el scroll y generación automática del mapa
+    private List<LevelBlock> levelBlocks;
+    private final int LEVEL_WIDTH = 4800;
+    private int cameraX = 0;
+
+    private boolean leftPressed = false;
+    private boolean rightPressed = false;
+    private boolean upPressed = false;
+    private boolean downPressed = false;
+    private long lastDamageTime = 0;
+    private final long INVULNERABILITY_COOLDOWN_MS = 1500;
+
+    private boolean checkCollision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
+        return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+    }
+
     public GameplayView() {
         this.enemyManager = new EnemyManager(20, 40);
         this.enemyRegistry = () -> enemyManager.getActiveEnemies();
         
         // Inyectar el EnemyRegistry en la espada inicial del héroe
-        this.hero = new Hero(100, 300, 100, 4.0f, new Sword(this.enemyRegistry));
+        this.hero = new Hero(100, 200, 100, 4.0f, new Sword(this.enemyRegistry));
         
         this.damageSystem = new DamageSystem();
         this.collisionManager = new CollisionManager(64);
@@ -70,11 +96,18 @@ public class GameplayView implements View {
         this.inputDevice = new KeyboardInputDevice(null);
         this.inputHandler = new GameInputHandler(this.inputDevice);
         
+        // Generar nivel procedimental alternando Castillo y Campo Abierto
+        generateLevel();
+        
         // Panel canvas premium
         this.panel = new GameCanvas();
         this.panel.setFocusable(true);
         
         this.setupKeyboardInput();
+        
+        // Reiniciar puntuaciones y vidas globales
+        ScoreManager.getInstance().reset();
+        
         this.initGame();
     }
 
@@ -86,11 +119,21 @@ public class GameplayView implements View {
                 switch (e.getKeyCode()) {
                     case java.awt.event.KeyEvent.VK_A:
                     case java.awt.event.KeyEvent.VK_LEFT:
+                        leftPressed = true;
                         keyName = "A";
                         break;
                     case java.awt.event.KeyEvent.VK_D:
                     case java.awt.event.KeyEvent.VK_RIGHT:
+                        rightPressed = true;
                         keyName = "D";
+                        break;
+                    case java.awt.event.KeyEvent.VK_W:
+                    case java.awt.event.KeyEvent.VK_UP:
+                        upPressed = true;
+                        break;
+                    case java.awt.event.KeyEvent.VK_S:
+                    case java.awt.event.KeyEvent.VK_DOWN:
+                        downPressed = true;
                         break;
                     case java.awt.event.KeyEvent.VK_SPACE:
                         keyName = "SPACE";
@@ -125,9 +168,25 @@ public class GameplayView implements View {
 
             @Override
             public void keyReleased(java.awt.event.KeyEvent e) {
-                int keyCode = e.getKeyCode();
-                if (keyCode == java.awt.event.KeyEvent.VK_A || keyCode == java.awt.event.KeyEvent.VK_LEFT ||
-                    keyCode == java.awt.event.KeyEvent.VK_D || keyCode == java.awt.event.KeyEvent.VK_RIGHT) {
+                switch (e.getKeyCode()) {
+                    case java.awt.event.KeyEvent.VK_A:
+                    case java.awt.event.KeyEvent.VK_LEFT:
+                        leftPressed = false;
+                        break;
+                    case java.awt.event.KeyEvent.VK_D:
+                    case java.awt.event.KeyEvent.VK_RIGHT:
+                        rightPressed = false;
+                        break;
+                    case java.awt.event.KeyEvent.VK_W:
+                    case java.awt.event.KeyEvent.VK_UP:
+                        upPressed = false;
+                        break;
+                    case java.awt.event.KeyEvent.VK_S:
+                    case java.awt.event.KeyEvent.VK_DOWN:
+                        downPressed = false;
+                        break;
+                }
+                if (!leftPressed && !rightPressed) {
                     inputDevice.setPressedKey(null);
                     // Detener al héroe en la máquina de estados
                     hero.handleInput("STOP");
@@ -148,7 +207,6 @@ public class GameplayView implements View {
             long lastTime = System.nanoTime();
             double nsPerTick = 1000000000.0 / 60.0;
             double delta = 0;
-            long lastSpawnTime = System.currentTimeMillis();
             EnemyFactory enemyFactory = new BasicEnemyFactory();
 
             while (isRunningGame) {
@@ -174,92 +232,330 @@ public class GameplayView implements View {
     }
 
     private void updateGame(EnemyFactory enemyFactory) {
-        // 1. Actualizar estado y física del héroe
-        hero.updateState();
-        
-        // Mantener al héroe en los límites de la pantalla (800x600)
-        float hx = hero.getAbsoluteX();
-        float hy = hero.getAbsoluteY();
-        if (hx < 0) hero.move(-hx / hero.getCollider().getWidth(), 0); // Ajuste
-        if (hx > 768) hero.move((768 - hx) / hero.getCollider().getWidth(), 0);
-        
-        // 2. Actualizar sistema de combos
+        // Reset/init ScoreManager if needed (lives, combo update)
         ScoreManager.getInstance().update();
-        
-        // 3. Spawner procedural de enemigos cada 4 segundos
-        long current = System.currentTimeMillis();
-        // Simulamos que aparecen enemigos de forma procedural
-        if (enemyManager.getActiveEnemies().size() < 4) {
-            float spawnX = (float) (Math.random() * 700) + 50;
-            float spawnY = 400.0f; // suelo simulado
-            
-            String[] types = {"SWORDSMAN", "SHIELDER", "FLYER"};
-            String chosenType = types[(int) (Math.random() * types.length)];
-            if ("FLYER".equals(chosenType)) {
-                spawnY = 200.0f; // altura aire
-            }
-            
-            Enemy newEnemy;
-            if (Math.random() < 0.3) {
-                // Builder para enemigo de élite
-                newEnemy = new EnemyBuilder(chosenType, spawnX, spawnY)
-                        .addShield()
-                        .addExtraHealth(20)
-                        .addExtraSpeed(0.5f)
-                        .build();
-            } else {
-                newEnemy = enemyFactory.createEnemy(chosenType, spawnX, spawnY);
-            }
-            enemyManager.getActiveEnemies().add(newEnemy);
+
+        // Guardar la posición previa antes de actualizar
+        float prevX = hero.getAbsoluteX();
+        float prevY = hero.getAbsoluteY();
+
+        // 1. Actualizar estado y aplicar gravedad si no está haciendo dash
+        hero.updateState();
+        if (!(hero.getCurrentState() instanceof com.juego.entity.DashingState)) {
+            hero.setVy(hero.getVy() + 0.6f); // Gravedad
+        } else {
+            hero.setVy(0);
         }
 
-        // 4. Inteligencia artificial básica para que los enemigos se muevan hacia el héroe
+        // 2. Procesar movimiento horizontal continuo por teclas
+        if (leftPressed) {
+            inputDevice.setPressedKey("A");
+            HeroFacade facade = new HeroFacade(hero);
+            inputHandler.handleInput(facade);
+        } else if (rightPressed) {
+            inputDevice.setPressedKey("D");
+            HeroFacade facade = new HeroFacade(hero);
+            inputHandler.handleInput(facade);
+        }
+
+        // Resolver colisión horizontal
+        for (LevelBlock block : levelBlocks) {
+            if (block.getType().equals("GROUND")) {
+                if (checkCollision(hero.getAbsoluteX(), hero.getAbsoluteY(), hero.getCollider().getWidth(), hero.getCollider().getHeight(),
+                                   block.getAbsoluteX(), block.getAbsoluteY(), block.getWidth(), block.getHeight())) {
+                    hero.setPosition(prevX, hero.getAbsoluteY());
+                    break;
+                }
+            }
+        }
+
+        // Aplicar movimiento vertical
+        hero.setPosition(hero.getAbsoluteX(), hero.getAbsoluteY() + hero.getVy());
+
+        // Resolver colisión vertical
+        boolean hitGround = false;
+        for (LevelBlock block : levelBlocks) {
+            if (block.getType().equals("GROUND") || block.getType().equals("PLATFORM")) {
+                boolean canCollide = true;
+                if (block.getType().equals("PLATFORM")) {
+                    canCollide = (hero.getVy() > 0) && (prevY + hero.getCollider().getHeight() <= block.getAbsoluteY() + 4);
+                }
+
+                if (canCollide) {
+                    if (checkCollision(hero.getAbsoluteX(), hero.getAbsoluteY(), hero.getCollider().getWidth(), hero.getCollider().getHeight(),
+                                       block.getAbsoluteX(), block.getAbsoluteY(), block.getWidth(), block.getHeight())) {
+                        if (hero.getVy() > 0) { // cayendo
+                            hero.setPosition(hero.getAbsoluteX(), block.getAbsoluteY() - hero.getCollider().getHeight());
+                            hero.setVy(0);
+                            hero.setOnGround(true);
+                            hero.resetJumps();
+                            hitGround = true;
+                            if (hero.getCurrentState() instanceof com.juego.entity.JumpingState) {
+                                hero.handleInput("LAND");
+                            }
+                        } else if (hero.getVy() < 0 && block.getType().equals("GROUND")) { // subiendo y choca con techo
+                            hero.setPosition(hero.getAbsoluteX(), block.getAbsoluteY() + block.getHeight());
+                            hero.setVy(0);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!hitGround) {
+            hero.setOnGround(false);
+            if (!(hero.getCurrentState() instanceof com.juego.entity.JumpingState) && !(hero.getCurrentState() instanceof com.juego.entity.DashingState)) {
+                hero.changeState(new com.juego.entity.JumpingState());
+            }
+        }
+
+        // Actualizar dirección de apuntado (8 direcciones)
+        float aimX = 0;
+        float aimY = 0;
+        if (leftPressed) aimX = -1;
+        if (rightPressed) aimX = 1;
+        if (upPressed) aimY = -1;
+        if (downPressed) aimY = 1;
+        if (aimX != 0 || aimY != 0) {
+            hero.setFacingDirection(new com.juego.math.Vector2(aimX, aimY));
+        }
+
+        // Verificar colisión con SPIKES (Pinchos)
+        long currentTime = System.currentTimeMillis();
+        boolean isHeroInvulnerable = (currentTime - lastDamageTime < INVULNERABILITY_COOLDOWN_MS) || (hero.getCurrentState() instanceof com.juego.entity.DashingState);
+        
+        if (!isHeroInvulnerable) {
+            for (LevelBlock block : levelBlocks) {
+                if (block.getType().equals("SPIKES")) {
+                    if (checkCollision(hero.getAbsoluteX(), hero.getAbsoluteY(), hero.getCollider().getWidth(), hero.getCollider().getHeight(),
+                                       block.getAbsoluteX(), block.getAbsoluteY(), block.getWidth(), block.getHeight())) {
+                        ScoreManager.getInstance().decrementLives();
+                        lastDamageTime = currentTime;
+                        hero.setVy(-5.0f);
+                        float knockDir = (hero.getFacingDirection().x < 0) ? 1.0f : -1.0f;
+                        hero.move(knockDir * 3, 0);
+                        System.out.println("Hero touched spikes! Lives: " + ScoreManager.getInstance().getLives());
+                        
+                        if (ScoreManager.getInstance().getLives() <= 0) {
+                            JOptionPane.showMessageDialog(panel, "¡HAS CAÍDO EN LA CRUZADA! Game Over", "Fin de la Partida", JOptionPane.ERROR_MESSAGE);
+                            exitGame();
+                            return;
+                        } else {
+                            // Respawn en lugar seguro de este segmento
+                            int currentSegment = (int) (hero.getAbsoluteX() / 800);
+                            hero.setPosition(currentSegment * 800 + 100, 200);
+                            hero.setVy(0);
+                            hero.setOnGround(false);
+                            hero.changeState(new com.juego.entity.JumpingState());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con PORTAL (Victoria)
+        for (LevelBlock block : levelBlocks) {
+            if (block.getType().equals("PORTAL")) {
+                if (checkCollision(hero.getAbsoluteX(), hero.getAbsoluteY(), hero.getCollider().getWidth(), hero.getCollider().getHeight(),
+                                   block.getAbsoluteX(), block.getAbsoluteY(), block.getWidth(), block.getHeight())) {
+                    JOptionPane.showMessageDialog(panel, "¡VICTORIA! Sir Kaelen ha purgado la plaga del Reino.", "Cruzada de Hierro", JOptionPane.INFORMATION_MESSAGE);
+                    exitGame();
+                    return;
+                }
+            }
+        }
+
+        // Verificar caída al vacío (Abismo)
+        if (hero.getAbsoluteY() > 600) {
+            ScoreManager.getInstance().decrementLives();
+            lastDamageTime = currentTime;
+            System.out.println("Hero fell in abyss! Lives: " + ScoreManager.getInstance().getLives());
+            
+            if (ScoreManager.getInstance().getLives() <= 0) {
+                JOptionPane.showMessageDialog(panel, "¡HAS CAÍDO EN LA CRUZADA! Game Over", "Fin de la Partida", JOptionPane.ERROR_MESSAGE);
+                exitGame();
+                return;
+            } else {
+                int currentSegment = (int) (hero.getAbsoluteX() / 800);
+                hero.setPosition(currentSegment * 800 + 100, 200);
+                hero.setVy(0);
+                hero.setOnGround(false);
+                hero.changeState(new com.juego.entity.JumpingState());
+            }
+        }
+
+        // 3. Spawner procedural de enemigos off-screen cada 4 segundos
+        if (enemyManager.getActiveEnemies().size() < 6 && Math.random() < 0.015) {
+            float spawnX = cameraX + 850;
+            if (spawnX < LEVEL_WIDTH) {
+                float spawnY = 400.0f;
+                String[] types = {"SWORDSMAN", "SHIELDER", "FLYER"};
+                String chosenType = types[(int) (Math.random() * types.length)];
+                
+                if ("FLYER".equals(chosenType)) {
+                    spawnY = 150.0f + (float)(Math.random() * 150);
+                } else {
+                    for (LevelBlock block : levelBlocks) {
+                        if (block.getType().equals("GROUND") && spawnX >= block.getAbsoluteX() && spawnX <= block.getAbsoluteX() + block.getWidth()) {
+                            spawnY = block.getAbsoluteY() - 32;
+                            break;
+                        }
+                    }
+                }
+
+                Enemy newEnemy;
+                if (Math.random() < 0.25) {
+                    newEnemy = new EnemyBuilder(chosenType, spawnX, spawnY)
+                            .addShield()
+                            .addExtraHealth(20)
+                            .addExtraSpeed(0.5f)
+                            .build();
+                } else {
+                    newEnemy = enemyFactory.createEnemy(chosenType, spawnX, spawnY);
+                }
+                enemyManager.getActiveEnemies().add(newEnemy);
+            }
+        }
+
+        // 4. Física e IA de enemigos
         for (Enemy enemy : enemyManager.getActiveEnemies()) {
+            boolean isStunned = false;
+            if (enemy instanceof StunnedEnemyDecorator) {
+                isStunned = ((StunnedEnemyDecorator) enemy).isStunned();
+            }
+
+            if (isStunned) {
+                continue; // Aturdido no se mueve
+            }
+
             float ex = enemy.getAbsoluteX();
             float ey = enemy.getAbsoluteY();
             float dx = hero.getAbsoluteX() - ex;
             float dy = hero.getAbsoluteY() - ey;
             float dist = (float) Math.sqrt(dx * dx + dy * dy);
             
-            if (dist > 10) {
-                // Mover al enemigo en dirección al héroe
-                enemy.move(dx / dist * 0.1f, dy / dist * 0.1f);
+            String eType = enemy.getFlyweight().getType();
+
+            if ("Flyer".equalsIgnoreCase(eType)) {
+                // Vuela hacia el héroe libremente
+                if (dist > 10) {
+                    enemy.move(dx / dist * 0.2f, dy / dist * 0.2f);
+                }
+            } else {
+                // Enemigos terrestres experimentan gravedad y caminan
+                enemy.setVy(enemy.getVy() + 0.6f);
+                float ePrevX = enemy.getAbsoluteX();
+                float ePrevY = enemy.getAbsoluteY();
+
+                float walkDir = (dx > 0) ? 0.22f : -0.22f;
+                enemy.move(walkDir, 0);
+
+                // Colisión horizontal del enemigo
+                for (LevelBlock block : levelBlocks) {
+                    if (block.getType().equals("GROUND")) {
+                        if (checkCollision(enemy.getAbsoluteX(), enemy.getAbsoluteY(), enemy.getCollider().getWidth(), enemy.getCollider().getHeight(),
+                                           block.getAbsoluteX(), block.getAbsoluteY(), block.getWidth(), block.getHeight())) {
+                            enemy.setPosition(ePrevX, enemy.getAbsoluteY());
+                            break;
+                        }
+                    }
+                }
+
+                // Movimiento vertical
+                enemy.setPosition(enemy.getAbsoluteX(), enemy.getAbsoluteY() + enemy.getVy());
+
+                // Colisión vertical del enemigo
+                boolean eHitGround = false;
+                for (LevelBlock block : levelBlocks) {
+                    if (block.getType().equals("GROUND") || block.getType().equals("PLATFORM")) {
+                        boolean canCollide = true;
+                        if (block.getType().equals("PLATFORM")) {
+                            canCollide = (enemy.getVy() > 0) && (ePrevY + enemy.getCollider().getHeight() <= block.getAbsoluteY() + 4);
+                        }
+
+                        if (canCollide) {
+                            if (checkCollision(enemy.getAbsoluteX(), enemy.getAbsoluteY(), enemy.getCollider().getWidth(), enemy.getCollider().getHeight(),
+                                               block.getAbsoluteX(), block.getAbsoluteY(), block.getWidth(), block.getHeight())) {
+                                if (enemy.getVy() > 0) {
+                                    enemy.setPosition(enemy.getAbsoluteX(), block.getAbsoluteY() - enemy.getCollider().getHeight());
+                                    enemy.setVy(0);
+                                    enemy.setOnGround(true);
+                                    eHitGround = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!eHitGround) {
+                    enemy.setOnGround(false);
+                }
+                
+                // Si caminan fuera del abismo de la pantalla, los eliminamos
+                if (enemy.getAbsoluteY() > 620) {
+                    enemy.reduceHealth(999);
+                }
             }
         }
 
-        // 5. Actualizar proyectiles activos y colisiones
+        // Colisión de héroe con enemigos (i-frames aplicados)
+        if (!isHeroInvulnerable) {
+            for (Enemy enemy : enemyManager.getActiveEnemies()) {
+                if (hero.getCollider().checkCollision(enemy.getCollider())) {
+                    ScoreManager.getInstance().decrementLives();
+                    lastDamageTime = currentTime;
+                    hero.setVy(-4.5f);
+                    float knockDir = (hero.getAbsoluteX() < enemy.getAbsoluteX()) ? -1.2f : 1.2f;
+                    hero.move(knockDir * 3, 0);
+                    System.out.println("Hero damaged by enemy! Lives: " + ScoreManager.getInstance().getLives());
+                    
+                    if (ScoreManager.getInstance().getLives() <= 0) {
+                        JOptionPane.showMessageDialog(panel, "¡HAS CAÍDO EN LA CRUZADA! Game Over", "Fin de la Partida", JOptionPane.ERROR_MESSAGE);
+                        exitGame();
+                        return;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 5. Actualizar proyectiles activos
         for (int i = activeProjectiles.size() - 1; i >= 0; i--) {
             Arrow arrow = activeProjectiles.get(i);
             arrow.update();
-            
+
             boolean hit = false;
             for (Enemy enemy : enemyManager.getActiveEnemies()) {
                 if (arrow.getCollider().checkCollision(enemy.getCollider())) {
                     enemy.reduceHealth(arrow.getDamage());
-                    System.out.println("Arrow Collision: Dealt " + arrow.getDamage() + " damage to " + enemy.getFlyweight().getType());
+                    System.out.println("Arrow Hit: " + enemy.getFlyweight().getType() + " for " + arrow.getDamage() + " damage.");
                     hit = true;
                     break;
                 }
             }
-            
+
             float ax = arrow.getAbsoluteX();
             float ay = arrow.getAbsoluteY();
-            
-            if (hit || ax < 0 || ax > 800 || ay < 0 || ay > 600) {
+
+            if (hit || ax < cameraX - 50 || ax > cameraX + 850 || ay < -100 || ay > 700) {
                 arrow.deactivate();
                 arrowPool.release(arrow);
                 activeProjectiles.remove(i);
             }
         }
 
-        // 6. Eliminar enemigos caídos y notificar muerte (Observer)
+        // 6. Eliminar enemigos caídos
         for (int i = enemyManager.getActiveEnemies().size() - 1; i >= 0; i--) {
             Enemy enemy = enemyManager.getActiveEnemies().get(i);
             if (enemy.getHealth() <= 0) {
-                System.out.println("Enemy defeated: " + enemy.getFlyweight().getType());
-                enemyManager.dieEnemy(enemy); // Remueve y dispara Observer
+                enemyManager.dieEnemy(enemy);
             }
         }
+
+        // 7. Scroll de cámara
+        cameraX = (int) (hero.getAbsoluteX() - 350);
+        if (cameraX < 0) cameraX = 0;
+        if (cameraX > LEVEL_WIDTH - 800) cameraX = LEVEL_WIDTH - 800;
     }
 
     @Override
@@ -278,6 +574,62 @@ public class GameplayView implements View {
         System.out.println("GameplayView removed. Game loop stopped.");
     }
 
+    private void generateLevel() {
+        this.levelBlocks = new ArrayList<>();
+        int segmentWidth = 800;
+        
+        // Generar 6 segmentos alternando estilos
+        for (int seg = 0; seg < 6; seg++) {
+            String style = (seg % 2 == 0) ? "FIELD" : "CASTLE";
+            int startX = seg * segmentWidth;
+            
+            // Suelo base del segmento con algunos abismos o variaciones
+            if (seg == 0) {
+                // Suelo continuo para empezar seguro
+                levelBlocks.add(new LevelBlock(startX, 432, 800, 168, "GROUND", style));
+            } else if (seg == 1) {
+                // Castillo: Suelo con foso de pinchos en medio
+                levelBlocks.add(new LevelBlock(startX, 432, 350, 168, "GROUND", style));
+                // Pinchos en el foso
+                levelBlocks.add(new LevelBlock(startX + 350, 520, 150, 48, "SPIKES", style));
+                levelBlocks.add(new LevelBlock(startX + 500, 432, 300, 168, "GROUND", style));
+                
+                // Plataformas flotantes sobre el foso para poder saltar
+                levelBlocks.add(new LevelBlock(startX + 300, 310, 100, 20, "PLATFORM", style));
+                levelBlocks.add(new LevelBlock(startX + 430, 310, 100, 20, "PLATFORM", style));
+            } else if (seg == 2) {
+                // Campo abierto: abismo de caída al vacío
+                levelBlocks.add(new LevelBlock(startX, 432, 300, 168, "GROUND", style));
+                // Abismo de 200px sin bloques de suelo!
+                levelBlocks.add(new LevelBlock(startX + 500, 432, 300, 168, "GROUND", style));
+                
+                // Plataforma flotante en el abismo
+                levelBlocks.add(new LevelBlock(startX + 340, 300, 120, 20, "PLATFORM", style));
+                levelBlocks.add(new LevelBlock(startX + 200, 220, 100, 20, "PLATFORM", style));
+            } else if (seg == 3) {
+                // Castillo: varios pilares y plataformas elevadas
+                levelBlocks.add(new LevelBlock(startX, 432, 200, 168, "GROUND", style));
+                levelBlocks.add(new LevelBlock(startX + 300, 432, 120, 168, "GROUND", style));
+                levelBlocks.add(new LevelBlock(startX + 500, 432, 300, 168, "GROUND", style));
+                
+                // Plataformas escalonadas
+                levelBlocks.add(new LevelBlock(startX + 180, 320, 100, 20, "PLATFORM", style));
+                levelBlocks.add(new LevelBlock(startX + 400, 240, 100, 20, "PLATFORM", style));
+            } else if (seg == 4) {
+                // Campo abierto: terreno irregular
+                levelBlocks.add(new LevelBlock(startX, 432, 400, 168, "GROUND", style));
+                levelBlocks.add(new LevelBlock(startX + 480, 380, 320, 220, "GROUND", style)); // Suelo más alto
+                
+                levelBlocks.add(new LevelBlock(startX + 350, 280, 100, 20, "PLATFORM", style));
+            } else {
+                // Castillo final
+                levelBlocks.add(new LevelBlock(startX, 432, 800, 168, "GROUND", style));
+                // Portal de victoria final en el extremo
+                levelBlocks.add(new LevelBlock(startX + 650, 332, 80, 100, "PORTAL", style));
+            }
+        }
+    }
+
     public void startGame() {
         GameManager.getInstance().addView(new GameplayView());
         System.out.println("Starting game...");
@@ -286,14 +638,19 @@ public class GameplayView implements View {
     public void exitGame() {
         this.isRunningGame = false;
         GameManager.getInstance().removeView(this);
+        // Regresa a HomeView
+        GameManager.getInstance().addView(new HomeView());
     }
 
-    /**
-     * JPanel interno personalizado para renderizado premium AWT/Swing 2D
-     */
     private class GameCanvas extends JPanel {
+        private double time = 0;
+
         public GameCanvas() {
             setDoubleBuffered(true);
+            new javax.swing.Timer(16, e -> {
+                time += 0.5;
+                repaint();
+            }).start();
         }
 
         @Override
@@ -307,103 +664,355 @@ public class GameplayView implements View {
             super.paintComponent(g);
             java.awt.Graphics2D g2 = (java.awt.Graphics2D) g;
             
-            // Habilitar antialiasing para gráficos más definidos y estéticos
             g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            // Dibujar fondo gradiente premium (noche oscura a negro)
+            long currentTime = System.currentTimeMillis();
+
+            // ====================================================
+            // 1. CIELO DINÁMICO GRADIENTE
+            // ====================================================
+            float playerProgress = hero.getAbsoluteX() / LEVEL_WIDTH;
+            Color skyTop = mixColors(new Color(110, 190, 240), new Color(40, 35, 60), playerProgress);
+            Color skyBottom = mixColors(new Color(250, 240, 210), new Color(20, 15, 30), playerProgress);
+            
             java.awt.GradientPaint skyGradient = new java.awt.GradientPaint(
-                0, 0, new java.awt.Color(12, 14, 36),
-                0, getHeight(), new java.awt.Color(5, 5, 10)
+                0, 0, skyTop,
+                0, getHeight(), skyBottom
             );
             g2.setPaint(skyGradient);
             g2.fillRect(0, 0, getWidth(), getHeight());
 
-            // Dibujar un suelo decorativo elegante
-            g2.setColor(new java.awt.Color(34, 40, 49));
-            g2.fillRect(0, 432, getWidth(), getHeight() - 432);
-            g2.setColor(new java.awt.Color(0, 173, 181));
-            g2.fillRect(0, 432, getWidth(), 4); // Línea brillante de borde
+            // Sol / Luna de fondo
+            g2.setColor(new Color(255, 230, 160, 40));
+            g2.fillOval(600 - (int)(cameraX * 0.05f), 70, 120, 120);
+            g2.setColor(new Color(255, 240, 200, 180));
+            g2.fillOval(630 - (int)(cameraX * 0.05f), 100, 60, 60);
 
-            // Dibujar al Héroe
-            int hx = (int) hero.getAbsoluteX();
-            int hy = (int) hero.getAbsoluteY();
-            g2.setColor(new java.awt.Color(0, 173, 181)); // Azul neón brillante
-            g2.fillRect(hx, hy, 32, 32);
-            
-            // Dibujar dirección e indicador visual del arma
-            g2.setColor(java.awt.Color.WHITE);
-            int dirX = (int) hero.getFacingDirection().x;
-            int dirY = (int) hero.getFacingDirection().y;
-            g2.drawLine(hx + 16, hy + 16, hx + 16 + dirX * 24, hy + 16 + dirY * 24);
+            // ====================================================
+            // 2. PARALLAX LAYER 1 (Fondo lejano - factor 0.15)
+            // ====================================================
+            int px1 = - (int) (cameraX * 0.15f);
+            for (int seg = 0; seg < 6; seg++) {
+                int segX = seg * 800 + px1;
+                if (seg % 2 == 0) { // FIELD
+                    g2.setColor(new Color(110, 160, 190, 140)); // Montaña lejana
+                    int[] mx = { segX - 150, segX + 300, segX + 750, segX + 750, segX - 150 };
+                    int[] my = { 432, 230, 432, 600, 600 };
+                    g2.fillPolygon(mx, my, 5);
+                } else { // CASTLE
+                    g2.setColor(new Color(85, 90, 105, 160)); // Torre de castillo lejana
+                    g2.fillRect(segX + 150, 150, 140, 300);
+                    g2.fillRect(segX + 110, 90, 40, 360);
+                    g2.fillRect(segX + 290, 90, 40, 360);
+                    int[] rx1 = { segX + 110, segX + 130, segX + 150 };
+                    int[] ry1 = { 90, 60, 90 };
+                    g2.fillPolygon(rx1, ry1, 3);
+                    int[] rx2 = { segX + 290, segX + 310, segX + 330 };
+                    int[] ry2 = { 90, 60, 90 };
+                    g2.fillPolygon(rx2, ry2, 3);
+                }
+            }
 
-            // Dibujar proyectiles (flechas del arco)
-            g2.setColor(new java.awt.Color(255, 235, 59)); // Amarillo brillante
+            // ====================================================
+            // 3. PARALLAX LAYER 2 (Fondo medio - factor 0.40)
+            // ====================================================
+            int px2 = - (int) (cameraX * 0.40f);
+            for (int seg = 0; seg < 6; seg++) {
+                int segX = seg * 800 + px2;
+                if (seg % 2 == 0) { // FIELD
+                    g2.setColor(new Color(40, 110, 70, 190)); // Colinas boscosas
+                    g2.fillOval(segX - 50, 350, 450, 200);
+                    g2.fillOval(segX + 250, 370, 550, 200);
+                    // Pinos
+                    g2.setColor(new Color(25, 80, 50));
+                    for (int tx = segX + 60; tx < segX + 750; tx += 200) {
+                        int[] xPts = { tx, tx - 12, tx + 12 };
+                        int[] yPts = { 330, 380, 380 };
+                        g2.fillPolygon(xPts, yPts, 3);
+                        g2.fillRect(tx - 3, 380, 6, 15);
+                    }
+                } else { // CASTLE
+                    g2.setColor(new Color(55, 60, 70, 200)); // Murallas
+                    g2.fillRect(segX + 180, 260, 40, 200);
+                    g2.fillRect(segX + 360, 260, 40, 200);
+                    g2.fillRect(segX + 180, 260, 220, 30);
+                    g2.fillArc(segX + 220, 275, 140, 140, 0, 180);
+                }
+            }
+
+            // ====================================================
+            // 4. CAPA DE JUEGO (Mundo principal desplazado por cameraX)
+            // ====================================================
+            g2.translate(-cameraX, 0);
+
+            // A. Dibujar bloques de nivel
+            for (LevelBlock block : levelBlocks) {
+                int bx = (int) block.getAbsoluteX();
+                int by = (int) block.getAbsoluteY();
+                int bw = (int) block.getWidth();
+                int bh = (int) block.getHeight();
+                
+                if (block.getType().equals("GROUND")) {
+                    if (block.getStyle().equals("FIELD")) {
+                        // Tierra
+                        g2.setColor(new Color(112, 84, 54));
+                        g2.fillRect(bx, by, bw, bh);
+                        // Borde de hierba
+                        g2.setColor(new Color(34, 139, 34));
+                        g2.fillRect(bx, by, bw, 8);
+                        // Borde brillante
+                        g2.setColor(new Color(144, 238, 144));
+                        g2.fillRect(bx, by, bw, 2);
+                        // Detalles de briznas
+                        g2.setColor(new Color(34, 139, 34));
+                        for (int gx = bx + 15; gx < bx + bw; gx += 45) {
+                            g2.drawLine(gx, by, gx - 2, by - 4);
+                            g2.drawLine(gx, by, gx + 2, by - 4);
+                        }
+                    } else { // CASTLE
+                        // Piedra castillo
+                        g2.setColor(new Color(60, 64, 76));
+                        g2.fillRect(bx, by, bw, bh);
+                        g2.setColor(new Color(85, 90, 105));
+                        g2.fillRect(bx, by, bw, 8);
+                        // Grout lines
+                        g2.setColor(new Color(35, 35, 45));
+                        g2.setStroke(new BasicStroke(1.5f));
+                        for (int gx = bx; gx < bx + bw; gx += 50) {
+                            g2.drawLine(gx, by, gx, by + bh);
+                        }
+                        for (int gy = by + 25; gy < by + bh; gy += 25) {
+                            g2.drawLine(bx, gy, bx + bw, gy);
+                        }
+                    }
+                } else if (block.getType().equals("PLATFORM")) {
+                    if (block.getStyle().equals("FIELD")) {
+                        g2.setColor(new Color(139, 90, 43));
+                        g2.fillRoundRect(bx, by, bw, bh, 6, 6);
+                        g2.setColor(new Color(80, 50, 25));
+                        g2.setStroke(new BasicStroke(2.0f));
+                        g2.drawRoundRect(bx, by, bw, bh, 6, 6);
+                    } else { // CASTLE
+                        g2.setColor(new Color(95, 100, 115));
+                        g2.fillRoundRect(bx, by, bw, bh, 4, 4);
+                        g2.setColor(new Color(45, 45, 55));
+                        g2.setStroke(new BasicStroke(2.0f));
+                        g2.drawRoundRect(bx, by, bw, bh, 4, 4);
+                        // Runas neón brillantes
+                        g2.setColor(new Color(0, 173, 181, 140));
+                        g2.drawString("✴ ✴ ✴", bx + bw/2 - 20, by + 14);
+                    }
+                } else if (block.getType().equals("SPIKES")) {
+                    g2.setColor(new Color(160, 160, 175));
+                    for (int sx = bx; sx < bx + bw; sx += 16) {
+                        int[] xPts = { sx, sx + 8, sx + 16 };
+                        int[] yPts = { by + bh, by, by + bh };
+                        g2.fillPolygon(xPts, yPts, 3);
+                        // Sangre decorativa en puntas
+                        g2.setColor(new Color(175, 20, 20));
+                        int[] xT = { sx + 5, sx + 8, sx + 11 };
+                        int[] yT = { by + 8, by, by + 8 };
+                        g2.fillPolygon(xT, yT, 3);
+                        g2.setColor(new Color(160, 160, 175));
+                    }
+                } else if (block.getType().equals("PORTAL")) {
+                    double rot = time * 0.08;
+                    g2.setColor(new Color(254, 110, 0, 40));
+                    g2.fillOval(bx - 15, by - 15, bw + 30, bh + 30);
+                    // Espirales
+                    g2.setColor(new Color(255, 200, 30, 200));
+                    g2.setStroke(new BasicStroke(3.0f));
+                    g2.drawArc(bx, by, bw, bh, (int)(rot * 180 / Math.PI), 240);
+                    g2.drawArc(bx + 12, by + 12, bw - 24, bh - 24, (int)(-rot * 180 / Math.PI), 240);
+                    // Centro oscuro
+                    g2.setColor(new Color(15, 10, 25));
+                    g2.fillOval(bx + 20, by + 20, bw - 40, bh - 40);
+                }
+            }
+
+            // B. Dibujar Proyectiles (Flechas)
+            g2.setStroke(new BasicStroke(2.0f));
             for (Arrow arrow : activeProjectiles) {
                 int ax = (int) arrow.getAbsoluteX();
                 int ay = (int) arrow.getAbsoluteY();
-                g2.fillOval(ax, ay, 6, 6);
+                
+                g2.setColor(new Color(255, 215, 0)); // Flecha dorada
+                g2.fillOval(ax - 3, ay - 3, 6, 6);
+                
+                // Estela brillante
+                g2.setColor(new Color(255, 165, 0, 100));
+                g2.drawLine(ax, ay, ax - 10, ay);
             }
 
-            // Dibujar Enemigos
+            // C. Dibujar Héroe (Sir Kaelen)
+            int hx = (int) hero.getAbsoluteX();
+            int hy = (int) hero.getAbsoluteY();
+            boolean isFacingLeft = hero.getFacingDirection().x < 0;
+            boolean isInvuln = (currentTime - lastDamageTime < INVULNERABILITY_COOLDOWN_MS);
+
+            if (!(isInvuln && (currentTime / 120 % 2 == 0))) {
+                // Capa roja ondulante
+                g2.setColor(new Color(185, 28, 28));
+                int cpOff = isFacingLeft ? 14 : -14;
+                int wave = (int) (Math.sin(time * 0.22) * 5);
+                int[] cpX = { hx + 16, hx + 16 + cpOff, hx + 16 + cpOff + wave, hx + 16 };
+                int[] cpY = { hy + 10, hy + 26, hy + 30, hy + 26 };
+                g2.fillPolygon(cpX, cpY, 4);
+
+                // Armadura
+                g2.setColor(new Color(110, 115, 125)); // Armadura plateada
+                g2.fillRoundRect(hx + 4, hy + 8, 24, 20, 8, 8);
+                g2.setColor(new Color(70, 75, 85));
+                g2.drawRoundRect(hx + 4, hy + 8, 24, 20, 8, 8);
+
+                // Casco y pluma dorada
+                g2.setColor(new Color(220, 175, 45)); // Pluma dorada
+                g2.fillRect(hx + 12, hy - 4, 8, 5);
+                g2.setColor(new Color(145, 150, 165)); // Casco
+                g2.fillOval(hx + 6, hy, 20, 12);
+                g2.setColor(new Color(70, 75, 85));
+                g2.drawOval(hx + 6, hy, 20, 12);
+                
+                // Visor brillante
+                g2.setColor(new Color(0, 230, 255));
+                int vsX = isFacingLeft ? hx + 8 : hx + 18;
+                g2.fillRect(vsX, hy + 4, 6, 3);
+
+                // Piernas
+                g2.setColor(new Color(80, 85, 95));
+                int legAnim = (int) (Math.sin(time * 0.26) * 6);
+                if (!hero.isOnGround()) {
+                    legAnim = 5;
+                } else if (!leftPressed && !rightPressed) {
+                    legAnim = 0;
+                }
+                g2.fillRect(hx + 8, hy + 28, 6, 4 + Math.abs(legAnim));
+                g2.fillRect(hx + 18, hy + 28, 6, 4 + Math.max(0, -legAnim));
+
+                // Dibujar Arma en mano del Héroe
+                g2.setColor(new Color(230, 230, 230));
+                g2.setStroke(new BasicStroke(2.0f));
+                
+                int wX = isFacingLeft ? hx - 2 : hx + 34;
+                int wY = hy + 18;
+                
+                com.juego.weapon.IWeapon currentW = hero.getEquippedWeapon();
+                if (currentW instanceof com.juego.weapon.Sword) {
+                    // Dibujar Espada
+                    g2.drawLine(hx + 16, hy + 18, wX, wY - 8);
+                    g2.setColor(new Color(220, 180, 50)); // Hilt
+                    g2.fillOval(hx + 16, hy + 17, 4, 4);
+                } else if (currentW instanceof com.juego.weapon.Hammer) {
+                    // Dibujar Mazo
+                    g2.setColor(new Color(90, 90, 95));
+                    g2.drawLine(hx + 16, hy + 18, wX, wY - 4);
+                    g2.fillRect(wX - 4, wY - 10, 10, 12);
+                } else if (currentW instanceof com.juego.weapon.Bow) {
+                    // Dibujar Arco
+                    g2.setColor(new Color(139, 90, 43));
+                    g2.drawArc(hx + (isFacingLeft ? -6 : 18), hy + 8, 20, 20, isFacingLeft ? 90 : -90, 180);
+                }
+                
+                // Efecto de ataque activo (slashing glow)
+                if (hero.getCurrentState() instanceof com.juego.entity.AttackingState) {
+                    g2.setColor(new Color(255, 230, 100, 160));
+                    g2.setStroke(new BasicStroke(3.5f));
+                    int arcStart = isFacingLeft ? 135 : -45;
+                    g2.drawArc(hx - 10, hy - 10, 52, 52, arcStart, 90);
+                }
+            }
+
+            // D. Dibujar Enemigos
             for (Enemy enemy : enemyManager.getActiveEnemies()) {
                 int ex = (int) enemy.getAbsoluteX();
                 int ey = (int) enemy.getAbsoluteY();
                 String type = enemy.getFlyweight().getType();
-
-                // Colorear según el tipo (Flyweight)
-                if ("Swordsman".equals(type)) {
-                    g2.setColor(new java.awt.Color(255, 75, 75)); // Rojo
-                } else if ("Shielder".equals(type)) {
-                    g2.setColor(new java.awt.Color(255, 165, 0)); // Naranja
-                } else if ("Flyer".equals(type)) {
-                    g2.setColor(new java.awt.Color(186, 85, 211)); // Púrpura
-                } else {
-                    g2.setColor(java.awt.Color.GRAY);
-                }
                 
-                // Si el enemigo está aturdido (Decorator)
                 boolean isStunned = false;
                 if (enemy instanceof StunnedEnemyDecorator) {
                     isStunned = ((StunnedEnemyDecorator) enemy).isStunned();
                 }
 
+                // Dibujar sprites procedimentales de enemigos
+                if ("Swordsman".equalsIgnoreCase(type)) {
+                    // Skeleton Swordsman
+                    g2.setColor(new Color(240, 238, 233)); // Bony white
+                    g2.fillOval(ex + 4, ey, 16, 16); // Skull
+                    g2.drawOval(ex + 4, ey, 16, 16);
+                    g2.setColor(new Color(20, 20, 20));
+                    g2.fillRect(ex + 8, ey + 6, 2, 2); // Eyes
+                    g2.fillRect(ex + 14, ey + 6, 2, 2);
+                    
+                    g2.setColor(new Color(240, 238, 233));
+                    g2.fillRect(ex + 10, ey + 16, 4, 12); // Spine
+                    g2.drawLine(ex + 6, ey + 28, ex + 6, ey + 32); // Left leg
+                    g2.drawLine(ex + 18, ey + 28, ex + 18, ey + 32); // Right leg
+                    
+                    g2.setColor(new Color(130, 130, 140)); // Rusty Sword
+                    g2.drawLine(ex + 14, ey + 20, ex + 28, ey + 14);
+                } else if ("Shielder".equalsIgnoreCase(type)) {
+                    // Shield Goblin
+                    g2.setColor(new Color(46, 139, 87)); // Goblin green
+                    g2.fillOval(ex + 2, ey + 4, 20, 20); // Head/body
+                    g2.setColor(new Color(220, 20, 60)); // Red eyes
+                    g2.fillRect(ex + 6, ey + 10, 3, 3);
+                    g2.fillRect(ex + 14, ey + 10, 3, 3);
+                    
+                    // Large wooden shield
+                    g2.setColor(new Color(139, 69, 19));
+                    g2.fillRoundRect(ex - 4, ey + 2, 8, 26, 4, 4);
+                    g2.setColor(new Color(192, 192, 192));
+                    g2.fillOval(ex - 2, ey + 11, 4, 4); // Shield boss
+                } else if ("Flyer".equalsIgnoreCase(type)) {
+                    // Plagued Gargoyle / Bat
+                    g2.setColor(new Color(90, 34, 139)); // Violet
+                    g2.fillOval(ex + 4, ey + 4, 16, 16); // Body
+                    
+                    // Flapping wings
+                    int wingY = (int)(Math.sin(time * 0.4) * 8);
+                    g2.setColor(new Color(75, 20, 110));
+                    int[] wxL = { ex + 4, ex - 12, ex + 4 };
+                    int[] wyL = { ey + 12, ey + 4 + wingY, ey + 16 };
+                    g2.fillPolygon(wxL, wyL, 3);
+                    
+                    int[] wxR = { ex + 20, ex + 36, ex + 20 };
+                    int[] wyR = { ey + 12, ey + 4 + wingY, ey + 16 };
+                    g2.fillPolygon(wxR, wyR, 3);
+                    
+                    g2.setColor(new Color(255, 60, 60)); // Glowing eyes
+                    g2.fillRect(ex + 9, ey + 10, 2, 2);
+                    g2.fillRect(ex + 13, ey + 10, 2, 2);
+                }
+
+                // Stun overlay (decorator stars)
                 if (isStunned) {
-                    g2.setColor(new java.awt.Color(128, 128, 128)); // Grisáceo
+                    g2.setColor(new Color(0, 240, 255));
+                    g2.setFont(new Font("Monospaced", Font.BOLD, 10));
+                    g2.drawString("★ ★ ★", ex - 2, ey - 14);
+                    g2.drawArc(ex - 4, ey - 8, 32, 8, (int)(time * 20 % 360), 180);
                 }
 
-                // Cuerpo
-                g2.fillOval(ex, ey, 24, 24);
-
-                // Dibujar vida restante sobre la cabeza de forma elegante
-                g2.setColor(java.awt.Color.RED);
-                g2.fillRect(ex - 4, ey - 10, 32, 3);
-                g2.setColor(java.awt.Color.GREEN);
-                int healthBarWidth = (int) (32 * (enemy.getHealth() / enemy.getFlyweight().getBaseHealth()));
-                if (healthBarWidth > 32) healthBarWidth = 32;
-                g2.fillRect(ex - 4, ey - 10, healthBarWidth, 3);
-
-                // Dibujar escudo adicional si es Shielder
-                if ("Shielder".equals(type) && !isStunned) {
-                    g2.setColor(java.awt.Color.WHITE);
-                    g2.fillRect(ex - 4, ey, 4, 24);
-                }
-
-                // Dibujar un espiral o efecto visual si está aturdido (Decorator activo)
-                if (isStunned) {
-                    g2.setColor(new java.awt.Color(0, 255, 255));
-                    g2.drawArc(ex - 2, ey - 8, 28, 8, 0, 360);
-                    g2.setFont(new java.awt.Font("Outfit", java.awt.Font.BOLD, 10));
-                    g2.drawString("STUN", ex - 2, ey - 12);
-                }
+                // Health bar above head
+                g2.setColor(new Color(200, 30, 30));
+                g2.fillRect(ex - 4, ey - 8, 32, 3);
+                g2.setColor(new Color(40, 200, 40));
+                int barWidth = (int) (32 * (enemy.getHealth() / enemy.getFlyweight().getBaseHealth()));
+                if (barWidth > 32) barWidth = 32;
+                g2.fillRect(ex - 4, ey - 8, barWidth, 3);
             }
 
-            // --- HUD (Heads-Up Display) ---
+            // Restablecer la transformación para el HUD fijo
+            g2.translate(cameraX, 0);
+
+            // ====================================================
+            // 5. HUD (Heads-Up Display)
+            // ====================================================
             ScoreManager scoreManager = ScoreManager.getInstance();
 
             // Vidas (Corazones neón)
-            g2.setFont(new java.awt.Font("Outfit", java.awt.Font.BOLD, 18));
-            g2.setColor(new java.awt.Color(255, 75, 75));
+            g2.setFont(new Font("Georgia", Font.BOLD, 18));
+            g2.setColor(new Color(255, 60, 60));
             StringBuilder hearts = new StringBuilder();
             for (int i = 0; i < scoreManager.getLives(); i++) {
                 hearts.append("❤️ ");
@@ -411,23 +1020,32 @@ public class GameplayView implements View {
             g2.drawString("LIVES: " + hearts.toString(), 20, 40);
 
             // Score
-            g2.setColor(java.awt.Color.WHITE);
+            g2.setColor(Color.WHITE);
             g2.drawString("SCORE: " + scoreManager.getScore(), 20, 70);
 
-            // Combo & Multiplicador (Observer)
+            // Combo (Observer)
             int combo = scoreManager.getComboCount();
             if (combo > 0) {
                 int mult = (int) Math.pow(2, combo / 3);
-                g2.setColor(new java.awt.Color(255, 215, 0)); // Color Dorado
-                g2.setFont(new java.awt.Font("Outfit", java.awt.Font.BOLD, 22));
+                g2.setColor(new Color(255, 215, 0)); // Gold
+                g2.setFont(new Font("Georgia", Font.BOLD, 22));
                 g2.drawString("COMBO: " + combo + " (x" + mult + ")", 20, 110);
             }
 
-            // Instrucciones del HUD
-            g2.setFont(new java.awt.Font("Outfit", java.awt.Font.PLAIN, 12));
-            g2.setColor(new java.awt.Color(200, 200, 200));
+            // Weapon indicators
+            g2.setFont(new Font("Monospaced", Font.PLAIN, 12));
+            g2.setColor(new Color(200, 200, 200));
             g2.drawString("[A/D] Move | [SPACE] Jump | [SHIFT] Dash | [J] Attack", 20, getHeight() - 40);
             g2.drawString("[1] Sword (Fast) | [2] Hammer (Stun) | [3] Bow (8-Way)", 20, getHeight() - 20);
+        }
+
+        private Color mixColors(Color c1, Color c2, float ratio) {
+            if (ratio < 0.0f) ratio = 0.0f;
+            if (ratio > 1.0f) ratio = 1.0f;
+            int r = (int) (c1.getRed() * (1 - ratio) + c2.getRed() * ratio);
+            int g = (int) (c1.getGreen() * (1 - ratio) + c2.getGreen() * ratio);
+            int b = (int) (c1.getBlue() * (1 - ratio) + c2.getBlue() * ratio);
+            return new Color(r, g, b);
         }
     }
 }
