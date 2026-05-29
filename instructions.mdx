@@ -1,0 +1,55 @@
+Actúa como un Arquitecto de Software y Desarrollador de Videojuegos Senior (Unity/C# o el motor de preferencia).
+
+Tu objetivo es diseñar la arquitectura y comenzar a escribir el código base para un juego de plataformas de acción 2D llamado "Cruzada de Hierro". El código debe ser limpio, escalable y modular.
+
+REGLA ESTRICTA DE ARQUITECTURA:
+Debes implementar exactamente 12 Patrones de Diseño (4 Creacionales, 4 Estructurales y 4 de Comportamiento) para resolver los requerimientos del juego.
+
+Aquí tienes la propuesta de patrones que debes utilizar y justificar en tu código según las mecánicas del juego:
+
+Patrones Creacionales (4):
+
+Object Pool: Para las flechas del arco (HU04) y los enemigos que aparecen y mueren constantemente (HU06), asegurando el rendimiento (RNF1).
+
+Factory Method: Para la generación procedural de diferentes tipos de enemigos (espadachines, escuderos, voladores) en los límites de la cámara (RF5).
+
+Singleton: Para el GameManager y el ScoreManager que controlan las 3 vidas globales y el puntaje (RF6, RF7).
+
+Builder: Para ensamblar y configurar niveles o configuraciones complejas de los enemigos (ej. Caballero + Escudo + Vida extra).
+
+Patrones Estructurales (4):
+
+Flyweight: Para compartir los datos base de los enemigos (stats, configuraciones, sprites compartidos) reduciendo el uso de memoria para mantener los 60 FPS (RNF1).
+
+Decorator: Para añadir el efecto temporal de "aturdimiento" que causa el Mazo sobre los enemigos sin alterar su clase base (RF3, HU03).
+
+Facade: Para centralizar los subsistemas del jugador (movimiento, combate, animaciones) en un solo punto de contacto visual para otros sistemas, simplificando su uso.
+
+Bridge: Para desacoplar el sistema de Input (Teclado/Mando) de las acciones del jugador, permitiendo baja latencia (RNF2).
+
+Patrones de Comportamiento (4):
+
+Strategy: OBLIGATORIO para el Sistema de Armas Dinámico (Espada, Mazo, Arco). Cada arma debe ser una estrategia intercambiable en tiempo de ejecución (RF4, HU02, HU03, HU04).
+
+State: Para la Máquina de Estados del personaje (Idle, Corriendo, Saltando, Dash, Atacando), evitando condicionales complejos (RF1, HU01).
+
+Observer: Para el sistema de Vidas y el multiplicador de Puntuación. Cuando un enemigo muere, notifica al ScoreManager para actualizar el combo y el HUD sin acoplamiento (RF7, HU07).
+
+Command: Para el manejo de las acciones del jugador (atacar, saltar, dash), lo que permite fijar la posición al apuntar en 8 direcciones y facilita el manejo de la latencia (RNF2).
+
+CONTEXTO DEL JUEGO (GDD)
+Título: Cruzada de Hierro
+
+Trama: Sir Kaelen avanza por Valoria purgando "La Plaga de Ceniza" con armas dinámicas.
+
+Mecánicas Core: Scroll lateral rápido, Cambio de armas (Espada: rápida/hordas; Mazo: lento/rompe escudos/aturde; Arco: 8 direcciones/distancia), Movilidad (Doble salto, Dash aéreo/suelo).
+
+RF/RNF Claves: 3 Vidas, Sistema de puntos con multiplicador exponencial (base 3 kills, expira en 10s), Spawner cada 5s máximo, 60 FPS (1080p), Latencia de input < 16ms.
+
+TUS TAREAS A EJECUTAR:
+Fase 1: Arquitectura. Enumera los 12 patrones y explica brevemente cómo se conectan entre sí para cumplir las Historias de Usuario (HU01 a HU07).
+Fase 2: Estructura de Clases. Genera un diagrama en formato texto o la declaración de las interfaces principales (ej. IWeaponStrategy, IState, IEnemyFactory).
+Fase 3: Código Core. Escribe los scripts fundamentales comenzando por:
+a) El patrón Strategy para las armas.
+b) El patrón State para el movimiento del jugador.
+c) El patrón Observer para el contador de puntos (HU07).
