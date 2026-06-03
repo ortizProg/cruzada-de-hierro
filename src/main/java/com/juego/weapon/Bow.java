@@ -24,7 +24,7 @@ public class Bow implements IWeapon {
         System.out.println("Bow fires an arrow at direction: " + direction.x + ", " + direction.y);
         // Uso de Object Pool (Evita overhead de GC)
         Arrow arrow = arrowPool.acquire();
-        arrow.activate(position.x, position.y, direction.x, direction.y, speed, 15);
+        arrow.activate(position.x + 16, position.y + 16, direction.x, direction.y, speed, 15);
         if (activeProjectiles != null) {
             activeProjectiles.add(arrow);
         }

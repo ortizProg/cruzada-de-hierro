@@ -31,6 +31,8 @@ import javax.swing.JOptionPane;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.juego.system.AssetManager;
+import java.awt.image.BufferedImage;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -68,6 +70,9 @@ public class GameplayView implements View {
     private long lastDamageTime = 0;
     private final long INVULNERABILITY_COOLDOWN_MS = 1500;
 
+    private int mouseX = 0;
+    private int mouseY = 0;
+
     private boolean checkCollision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
         return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
     }
@@ -104,6 +109,7 @@ public class GameplayView implements View {
         this.panel.setFocusable(true);
         
         this.setupKeyboardInput();
+        this.setupMouseInput();
         
         // Reiniciar puntuaciones y vidas globales
         ScoreManager.getInstance().reset();
@@ -129,12 +135,6 @@ public class GameplayView implements View {
                         break;
                     case java.awt.event.KeyEvent.VK_W:
                     case java.awt.event.KeyEvent.VK_UP:
-                        upPressed = true;
-                        break;
-                    case java.awt.event.KeyEvent.VK_S:
-                    case java.awt.event.KeyEvent.VK_DOWN:
-                        downPressed = true;
-                        break;
                     case java.awt.event.KeyEvent.VK_SPACE:
                         keyName = "SPACE";
                         break;
@@ -177,14 +177,6 @@ public class GameplayView implements View {
                     case java.awt.event.KeyEvent.VK_RIGHT:
                         rightPressed = false;
                         break;
-                    case java.awt.event.KeyEvent.VK_W:
-                    case java.awt.event.KeyEvent.VK_UP:
-                        upPressed = false;
-                        break;
-                    case java.awt.event.KeyEvent.VK_S:
-                    case java.awt.event.KeyEvent.VK_DOWN:
-                        downPressed = false;
-                        break;
                 }
                 if (!leftPressed && !rightPressed) {
                     inputDevice.setPressedKey(null);
@@ -193,6 +185,57 @@ public class GameplayView implements View {
                 }
             }
         });
+    }
+
+    private void setupMouseInput() {
+        java.awt.event.MouseAdapter mouseAdapter = new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                if (e.getButton() == java.awt.event.MouseEvent.BUTTON1) { // Click izquierdo
+                    mouseX = e.getX();
+                    mouseY = e.getY();
+                    
+                    // Actualizar dirección inmediatamente antes del ataque
+                    hero.setFacingDirection(getMouseDirection());
+                    
+                    // Ejecutar ataque
+                    HeroFacade facade = new HeroFacade(hero);
+                    inputDevice.setPressedKey("J");
+                    inputHandler.handleInput(facade);
+                }
+            }
+
+            @Override
+            public void mouseMoved(java.awt.event.MouseEvent e) {
+                mouseX = e.getX();
+                mouseY = e.getY();
+            }
+
+            @Override
+            public void mouseDragged(java.awt.event.MouseEvent e) {
+                mouseX = e.getX();
+                mouseY = e.getY();
+            }
+        };
+        this.panel.addMouseListener(mouseAdapter);
+        this.panel.addMouseMotionListener(mouseAdapter);
+    }
+
+    private com.juego.math.Vector2 getMouseDirection() {
+        float worldMouseX = mouseX + cameraX;
+        float worldMouseY = mouseY;
+        
+        float hCenterX = hero.getAbsoluteX() + 16;
+        float hCenterY = hero.getAbsoluteY() + 16;
+        
+        float dx = worldMouseX - hCenterX;
+        float dy = worldMouseY - hCenterY;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0) {
+            return new com.juego.math.Vector2(dx / dist, dy / dist);
+        } else {
+            return new com.juego.math.Vector2(1, 0);
+        }
     }
 
     private void initGame() {
@@ -309,15 +352,9 @@ public class GameplayView implements View {
             }
         }
 
-        // Actualizar dirección de apuntado (8 direcciones)
-        float aimX = 0;
-        float aimY = 0;
-        if (leftPressed) aimX = -1;
-        if (rightPressed) aimX = 1;
-        if (upPressed) aimY = -1;
-        if (downPressed) aimY = 1;
-        if (aimX != 0 || aimY != 0) {
-            hero.setFacingDirection(new com.juego.math.Vector2(aimX, aimY));
+        // Actualizar dirección de apuntado con el mouse (si no está haciendo dash)
+        if (!(hero.getCurrentState() instanceof com.juego.entity.DashingState)) {
+            hero.setFacingDirection(getMouseDirection());
         }
 
         // Verificar colisión con SPIKES (Pinchos)
@@ -753,96 +790,122 @@ public class GameplayView implements View {
                 int bw = (int) block.getWidth();
                 int bh = (int) block.getHeight();
                 
-                if (block.getType().equals("GROUND")) {
-                    if (block.getStyle().equals("FIELD")) {
-                        // Tierra
-                        g2.setColor(new Color(112, 84, 54));
-                        g2.fillRect(bx, by, bw, bh);
-                        // Borde de hierba
-                        g2.setColor(new Color(34, 139, 34));
-                        g2.fillRect(bx, by, bw, 8);
-                        // Borde brillante
-                        g2.setColor(new Color(144, 238, 144));
-                        g2.fillRect(bx, by, bw, 2);
-                        // Detalles de briznas
-                        g2.setColor(new Color(34, 139, 34));
-                        for (int gx = bx + 15; gx < bx + bw; gx += 45) {
-                            g2.drawLine(gx, by, gx - 2, by - 4);
-                            g2.drawLine(gx, by, gx + 2, by - 4);
-                        }
-                    } else { // CASTLE
-                        // Piedra castillo
-                        g2.setColor(new Color(60, 64, 76));
-                        g2.fillRect(bx, by, bw, bh);
-                        g2.setColor(new Color(85, 90, 105));
-                        g2.fillRect(bx, by, bw, 8);
-                        // Grout lines
-                        g2.setColor(new Color(35, 35, 45));
-                        g2.setStroke(new BasicStroke(1.5f));
-                        for (int gx = bx; gx < bx + bw; gx += 50) {
-                            g2.drawLine(gx, by, gx, by + bh);
-                        }
-                        for (int gy = by + 25; gy < by + bh; gy += 25) {
-                            g2.drawLine(bx, gy, bx + bw, gy);
+                BufferedImage tileImg = AssetManager.getInstance().getTileSprite(block.getType(), block.getStyle());
+                if (tileImg != null) {
+                    int tw = tileImg.getWidth();
+                    int th = tileImg.getHeight();
+                    // Tiling (repetir imagen en el área)
+                    for (int tx = bx; tx < bx + bw; tx += tw) {
+                        for (int ty = by; ty < by + bh; ty += th) {
+                            int drawW = Math.min(tw, bx + bw - tx);
+                            int drawH = Math.min(th, by + bh - ty);
+                            g2.drawImage(tileImg, tx, ty, tx + drawW, ty + drawH, 0, 0, drawW, drawH, null);
                         }
                     }
-                } else if (block.getType().equals("PLATFORM")) {
-                    if (block.getStyle().equals("FIELD")) {
-                        g2.setColor(new Color(139, 90, 43));
-                        g2.fillRoundRect(bx, by, bw, bh, 6, 6);
-                        g2.setColor(new Color(80, 50, 25));
-                        g2.setStroke(new BasicStroke(2.0f));
-                        g2.drawRoundRect(bx, by, bw, bh, 6, 6);
-                    } else { // CASTLE
-                        g2.setColor(new Color(95, 100, 115));
-                        g2.fillRoundRect(bx, by, bw, bh, 4, 4);
-                        g2.setColor(new Color(45, 45, 55));
-                        g2.setStroke(new BasicStroke(2.0f));
-                        g2.drawRoundRect(bx, by, bw, bh, 4, 4);
-                        // Runas neón brillantes
-                        g2.setColor(new Color(0, 173, 181, 140));
-                        g2.drawString("✴ ✴ ✴", bx + bw/2 - 20, by + 14);
-                    }
-                } else if (block.getType().equals("SPIKES")) {
-                    g2.setColor(new Color(160, 160, 175));
-                    for (int sx = bx; sx < bx + bw; sx += 16) {
-                        int[] xPts = { sx, sx + 8, sx + 16 };
-                        int[] yPts = { by + bh, by, by + bh };
-                        g2.fillPolygon(xPts, yPts, 3);
-                        // Sangre decorativa en puntas
-                        g2.setColor(new Color(175, 20, 20));
-                        int[] xT = { sx + 5, sx + 8, sx + 11 };
-                        int[] yT = { by + 8, by, by + 8 };
-                        g2.fillPolygon(xT, yT, 3);
+                } else {
+                    if (block.getType().equals("GROUND")) {
+                        if (block.getStyle().equals("FIELD")) {
+                            // Tierra
+                            g2.setColor(new Color(112, 84, 54));
+                            g2.fillRect(bx, by, bw, bh);
+                            // Borde de hierba
+                            g2.setColor(new Color(34, 139, 34));
+                            g2.fillRect(bx, by, bw, 8);
+                            // Borde brillante
+                            g2.setColor(new Color(144, 238, 144));
+                            g2.fillRect(bx, by, bw, 2);
+                            // Detalles de briznas
+                            g2.setColor(new Color(34, 139, 34));
+                            for (int gx = bx + 15; gx < bx + bw; gx += 45) {
+                                g2.drawLine(gx, by, gx - 2, by - 4);
+                                g2.drawLine(gx, by, gx + 2, by - 4);
+                            }
+                        } else { // CASTLE
+                            // Piedra castillo
+                            g2.setColor(new Color(60, 64, 76));
+                            g2.fillRect(bx, by, bw, bh);
+                            g2.setColor(new Color(85, 90, 105));
+                            g2.fillRect(bx, by, bw, 8);
+                            // Grout lines
+                            g2.setColor(new Color(35, 35, 45));
+                            g2.setStroke(new BasicStroke(1.5f));
+                            for (int gx = bx; gx < bx + bw; gx += 50) {
+                                g2.drawLine(gx, by, gx, by + bh);
+                            }
+                            for (int gy = by + 25; gy < by + bh; gy += 25) {
+                                g2.drawLine(bx, gy, bx + bw, gy);
+                            }
+                        }
+                    } else if (block.getType().equals("PLATFORM")) {
+                        if (block.getStyle().equals("FIELD")) {
+                            g2.setColor(new Color(139, 90, 43));
+                            g2.fillRoundRect(bx, by, bw, bh, 6, 6);
+                            g2.setColor(new Color(80, 50, 25));
+                            g2.setStroke(new BasicStroke(2.0f));
+                            g2.drawRoundRect(bx, by, bw, bh, 6, 6);
+                        } else { // CASTLE
+                            g2.setColor(new Color(95, 100, 115));
+                            g2.fillRoundRect(bx, by, bw, bh, 4, 4);
+                            g2.setColor(new Color(45, 45, 55));
+                            g2.setStroke(new BasicStroke(2.0f));
+                            g2.drawRoundRect(bx, by, bw, bh, 4, 4);
+                            // Runas neón brillantes
+                            g2.setColor(new Color(0, 173, 181, 140));
+                            g2.drawString("✴ ✴ ✴", bx + bw/2 - 20, by + 14);
+                        }
+                    } else if (block.getType().equals("SPIKES")) {
                         g2.setColor(new Color(160, 160, 175));
+                        for (int sx = bx; sx < bx + bw; sx += 16) {
+                            int[] xPts = { sx, sx + 8, sx + 16 };
+                            int[] yPts = { by + bh, by, by + bh };
+                            g2.fillPolygon(xPts, yPts, 3);
+                            // Sangre decorativa en puntas
+                            g2.setColor(new Color(175, 20, 20));
+                            int[] xT = { sx + 5, sx + 8, sx + 11 };
+                            int[] yT = { by + 8, by, by + 8 };
+                            g2.fillPolygon(xT, yT, 3);
+                            g2.setColor(new Color(160, 160, 175));
+                        }
+                    } else if (block.getType().equals("PORTAL")) {
+                        double rot = time * 0.08;
+                        g2.setColor(new Color(254, 110, 0, 40));
+                        g2.fillOval(bx - 15, by - 15, bw + 30, bh + 30);
+                        // Espirales
+                        g2.setColor(new Color(255, 200, 30, 200));
+                        g2.setStroke(new BasicStroke(3.0f));
+                        g2.drawArc(bx, by, bw, bh, (int)(rot * 180 / Math.PI), 240);
+                        g2.drawArc(bx + 12, by + 12, bw - 24, bh - 24, (int)(-rot * 180 / Math.PI), 240);
+                        // Centro oscuro
+                        g2.setColor(new Color(15, 10, 25));
+                        g2.fillOval(bx + 20, by + 20, bw - 40, bh - 40);
                     }
-                } else if (block.getType().equals("PORTAL")) {
-                    double rot = time * 0.08;
-                    g2.setColor(new Color(254, 110, 0, 40));
-                    g2.fillOval(bx - 15, by - 15, bw + 30, bh + 30);
-                    // Espirales
-                    g2.setColor(new Color(255, 200, 30, 200));
-                    g2.setStroke(new BasicStroke(3.0f));
-                    g2.drawArc(bx, by, bw, bh, (int)(rot * 180 / Math.PI), 240);
-                    g2.drawArc(bx + 12, by + 12, bw - 24, bh - 24, (int)(-rot * 180 / Math.PI), 240);
-                    // Centro oscuro
-                    g2.setColor(new Color(15, 10, 25));
-                    g2.fillOval(bx + 20, by + 20, bw - 40, bh - 40);
                 }
             }
 
             // B. Dibujar Proyectiles (Flechas)
             g2.setStroke(new BasicStroke(2.0f));
+            BufferedImage arrowImg = AssetManager.getInstance().getSprite("/assets/projectile_arrow.png");
             for (Arrow arrow : activeProjectiles) {
                 int ax = (int) arrow.getAbsoluteX();
                 int ay = (int) arrow.getAbsoluteY();
                 
-                g2.setColor(new Color(255, 215, 0)); // Flecha dorada
-                g2.fillOval(ax - 3, ay - 3, 6, 6);
+                double angle = Math.atan2(arrow.getDirY(), arrow.getDirX());
                 
-                // Estela brillante
-                g2.setColor(new Color(255, 165, 0, 100));
-                g2.drawLine(ax, ay, ax - 10, ay);
+                if (arrowImg != null) {
+                    double imgAngle = angle + Math.PI / 2; // Offset de 90 grados porque el sprite original es vertical (apunta hacia arriba)
+                    g2.rotate(imgAngle, ax, ay);
+                    g2.drawImage(arrowImg, ax - arrowImg.getWidth() / 2, ay - arrowImg.getHeight() / 2, null);
+                    g2.rotate(-imgAngle, ax, ay);
+                } else {
+                    g2.rotate(angle, ax, ay);
+                    g2.setColor(new Color(255, 215, 0)); // Flecha dorada
+                    g2.fillOval(ax - 3, ay - 3, 6, 6);
+                    
+                    // Estela brillante (opuesta a la dirección de movimiento)
+                    g2.setColor(new Color(255, 165, 0, 100));
+                    g2.drawLine(ax, ay, ax - 10, ay);
+                    g2.rotate(-angle, ax, ay);
+                }
             }
 
             // C. Dibujar Héroe (Sir Kaelen)
@@ -851,67 +914,101 @@ public class GameplayView implements View {
             boolean isFacingLeft = hero.getFacingDirection().x < 0;
             boolean isInvuln = (currentTime - lastDamageTime < INVULNERABILITY_COOLDOWN_MS);
 
+            com.juego.weapon.IWeapon currentW = hero.getEquippedWeapon();
+            String weaponType = currentW.getClass().getSimpleName();
+
             if (!(isInvuln && (currentTime / 120 % 2 == 0))) {
-                // Capa roja ondulante
-                g2.setColor(new Color(185, 28, 28));
-                int cpOff = isFacingLeft ? 14 : -14;
-                int wave = (int) (Math.sin(time * 0.22) * 5);
-                int[] cpX = { hx + 16, hx + 16 + cpOff, hx + 16 + cpOff + wave, hx + 16 };
-                int[] cpY = { hy + 10, hy + 26, hy + 30, hy + 26 };
-                g2.fillPolygon(cpX, cpY, 4);
-
-                // Armadura
-                g2.setColor(new Color(110, 115, 125)); // Armadura plateada
-                g2.fillRoundRect(hx + 4, hy + 8, 24, 20, 8, 8);
-                g2.setColor(new Color(70, 75, 85));
-                g2.drawRoundRect(hx + 4, hy + 8, 24, 20, 8, 8);
-
-                // Casco y pluma dorada
-                g2.setColor(new Color(220, 175, 45)); // Pluma dorada
-                g2.fillRect(hx + 12, hy - 4, 8, 5);
-                g2.setColor(new Color(145, 150, 165)); // Casco
-                g2.fillOval(hx + 6, hy, 20, 12);
-                g2.setColor(new Color(70, 75, 85));
-                g2.drawOval(hx + 6, hy, 20, 12);
-                
-                // Visor brillante
-                g2.setColor(new Color(0, 230, 255));
-                int vsX = isFacingLeft ? hx + 8 : hx + 18;
-                g2.fillRect(vsX, hy + 4, 6, 3);
-
-                // Piernas
-                g2.setColor(new Color(80, 85, 95));
-                int legAnim = (int) (Math.sin(time * 0.26) * 6);
-                if (!hero.isOnGround()) {
-                    legAnim = 5;
-                } else if (!leftPressed && !rightPressed) {
-                    legAnim = 0;
+                // Determinar estado para el sprite
+                String stateName = "idle";
+                if (hero.getCurrentState() instanceof com.juego.entity.RunningState) {
+                    stateName = "run";
+                } else if (hero.getCurrentState() instanceof com.juego.entity.JumpingState) {
+                    stateName = "jump";
+                } else if (hero.getCurrentState() instanceof com.juego.entity.DashingState) {
+                    stateName = "dash";
+                } else if (hero.getCurrentState() instanceof com.juego.entity.AttackingState) {
+                    stateName = "attack";
                 }
-                g2.fillRect(hx + 8, hy + 28, 6, 4 + Math.abs(legAnim));
-                g2.fillRect(hx + 18, hy + 28, 6, 4 + Math.max(0, -legAnim));
 
-                // Dibujar Arma en mano del Héroe
-                g2.setColor(new Color(230, 230, 230));
-                g2.setStroke(new BasicStroke(2.0f));
-                
-                int wX = isFacingLeft ? hx - 2 : hx + 34;
-                int wY = hy + 18;
-                
-                com.juego.weapon.IWeapon currentW = hero.getEquippedWeapon();
-                if (currentW instanceof com.juego.weapon.Sword) {
-                    // Dibujar Espada
-                    g2.drawLine(hx + 16, hy + 18, wX, wY - 8);
-                    g2.setColor(new Color(220, 180, 50)); // Hilt
-                    g2.fillOval(hx + 16, hy + 17, 4, 4);
-                } else if (currentW instanceof com.juego.weapon.Hammer) {
-                    // Dibujar Mazo
-                    g2.setColor(new Color(90, 90, 95));
-                    g2.drawLine(hx + 16, hy + 18, wX, wY - 4);
-                    g2.fillRect(wX - 4, wY - 10, 10, 12);
-                } else if (currentW instanceof com.juego.weapon.Bow) {
-                    // Dibujar Arco
-                    g2.setColor(new Color(139, 90, 43));
-                    g2.drawArc(hx + (isFacingLeft ? -6 : 18), hy + 8, 20, 20, isFacingLeft ? 90 : -90, 180);
+                BufferedImage heroImg = AssetManager.getInstance().getHeroSprite(stateName, isFacingLeft, time, weaponType);
+                if (heroImg != null) {
+                    int drawW = 64; // Escalar el frame de 256x256 a 64x64 para mejor calidad
+                    int drawH = 64;
+                    int drawX = hx + (32 - drawW) / 2;
+                    int drawY = hy + 32 - drawH; // Alinear base
+                    g2.drawImage(heroImg, drawX, drawY, drawW, drawH, null);
+                } else {
+                    // Capa roja ondulante
+                    g2.setColor(new Color(185, 28, 28));
+                    int cpOff = isFacingLeft ? 14 : -14;
+                    int wave = (int) (Math.sin(time * 0.22) * 5);
+                    int[] cpX = { hx + 16, hx + 16 + cpOff, hx + 16 + cpOff + wave, hx + 16 };
+                    int[] cpY = { hy + 10, hy + 26, hy + 30, hy + 26 };
+                    g2.fillPolygon(cpX, cpY, 4);
+
+                    // Armadura
+                    g2.setColor(new Color(110, 115, 125)); // Armadura plateada
+                    g2.fillRoundRect(hx + 4, hy + 8, 24, 20, 8, 8);
+                    g2.setColor(new Color(70, 75, 85));
+                    g2.drawRoundRect(hx + 4, hy + 8, 24, 20, 8, 8);
+
+                    // Casco y pluma dorada
+                    g2.setColor(new Color(220, 175, 45)); // Pluma dorada
+                    g2.fillRect(hx + 12, hy - 4, 8, 5);
+                    g2.setColor(new Color(145, 150, 165)); // Casco
+                    g2.fillOval(hx + 6, hy, 20, 12);
+                    g2.setColor(new Color(70, 75, 85));
+                    g2.drawOval(hx + 6, hy, 20, 12);
+                    
+                    // Visor brillante
+                    g2.setColor(new Color(0, 230, 255));
+                    int vsX = isFacingLeft ? hx + 8 : hx + 18;
+                    g2.fillRect(vsX, hy + 4, 6, 3);
+
+                    // Piernas
+                    g2.setColor(new Color(80, 85, 95));
+                    int legAnim = (int) (Math.sin(time * 0.26) * 6);
+                    if (!hero.isOnGround()) {
+                        legAnim = 5;
+                    } else if (!leftPressed && !rightPressed) {
+                        legAnim = 0;
+                    }
+                    g2.fillRect(hx + 8, hy + 28, 6, 4 + Math.abs(legAnim));
+                    g2.fillRect(hx + 18, hy + 28, 6, 4 + Math.max(0, -legAnim));
+                }
+
+                // Dibujar Arma en mano del Héroe (solo si no está ya integrada en la animación)
+                boolean hasBakedAnimation = "Sword".equalsIgnoreCase(weaponType) || "Bow".equalsIgnoreCase(weaponType);
+                if (!hasBakedAnimation) {
+                    BufferedImage weaponImg = AssetManager.getInstance().getWeaponSprite(weaponType);
+                    if (weaponImg != null) {
+                        int wSize = 24;
+                        int wX = isFacingLeft ? hx + 4 - wSize : hx + 28;
+                        int wY = hy + 8;
+                        g2.drawImage(weaponImg, wX, wY, wSize, wSize, null);
+                    } else {
+                        g2.setColor(new Color(230, 230, 230));
+                        g2.setStroke(new BasicStroke(2.0f));
+                        
+                        int wX = isFacingLeft ? hx - 2 : hx + 34;
+                        int wY = hy + 18;
+                        
+                        if (currentW instanceof com.juego.weapon.Sword) {
+                            // Dibujar Espada
+                            g2.drawLine(hx + 16, hy + 18, wX, wY - 8);
+                            g2.setColor(new Color(220, 180, 50)); // Hilt
+                            g2.fillOval(hx + 16, hy + 17, 4, 4);
+                        } else if (currentW instanceof com.juego.weapon.Hammer) {
+                            // Dibujar Mazo
+                            g2.setColor(new Color(90, 90, 95));
+                            g2.drawLine(hx + 16, hy + 18, wX, wY - 4);
+                            g2.fillRect(wX - 4, wY - 10, 10, 12);
+                        } else if (currentW instanceof com.juego.weapon.Bow) {
+                            // Dibujar Arco
+                            g2.setColor(new Color(139, 90, 43));
+                            g2.drawArc(hx + (isFacingLeft ? -6 : 18), hy + 8, 20, 20, isFacingLeft ? 90 : -90, 180);
+                        }
+                    }
                 }
                 
                 // Efecto de ataque activo (slashing glow)
@@ -934,55 +1031,65 @@ public class GameplayView implements View {
                     isStunned = ((StunnedEnemyDecorator) enemy).isStunned();
                 }
 
-                // Dibujar sprites procedimentales de enemigos
-                if ("Swordsman".equalsIgnoreCase(type)) {
-                    // Skeleton Swordsman
-                    g2.setColor(new Color(240, 238, 233)); // Bony white
-                    g2.fillOval(ex + 4, ey, 16, 16); // Skull
-                    g2.drawOval(ex + 4, ey, 16, 16);
-                    g2.setColor(new Color(20, 20, 20));
-                    g2.fillRect(ex + 8, ey + 6, 2, 2); // Eyes
-                    g2.fillRect(ex + 14, ey + 6, 2, 2);
-                    
-                    g2.setColor(new Color(240, 238, 233));
-                    g2.fillRect(ex + 10, ey + 16, 4, 12); // Spine
-                    g2.drawLine(ex + 6, ey + 28, ex + 6, ey + 32); // Left leg
-                    g2.drawLine(ex + 18, ey + 28, ex + 18, ey + 32); // Right leg
-                    
-                    g2.setColor(new Color(130, 130, 140)); // Rusty Sword
-                    g2.drawLine(ex + 14, ey + 20, ex + 28, ey + 14);
-                } else if ("Shielder".equalsIgnoreCase(type)) {
-                    // Shield Goblin
-                    g2.setColor(new Color(46, 139, 87)); // Goblin green
-                    g2.fillOval(ex + 2, ey + 4, 20, 20); // Head/body
-                    g2.setColor(new Color(220, 20, 60)); // Red eyes
-                    g2.fillRect(ex + 6, ey + 10, 3, 3);
-                    g2.fillRect(ex + 14, ey + 10, 3, 3);
-                    
-                    // Large wooden shield
-                    g2.setColor(new Color(139, 69, 19));
-                    g2.fillRoundRect(ex - 4, ey + 2, 8, 26, 4, 4);
-                    g2.setColor(new Color(192, 192, 192));
-                    g2.fillOval(ex - 2, ey + 11, 4, 4); // Shield boss
-                } else if ("Flyer".equalsIgnoreCase(type)) {
-                    // Plagued Gargoyle / Bat
-                    g2.setColor(new Color(90, 34, 139)); // Violet
-                    g2.fillOval(ex + 4, ey + 4, 16, 16); // Body
-                    
-                    // Flapping wings
-                    int wingY = (int)(Math.sin(time * 0.4) * 8);
-                    g2.setColor(new Color(75, 20, 110));
-                    int[] wxL = { ex + 4, ex - 12, ex + 4 };
-                    int[] wyL = { ey + 12, ey + 4 + wingY, ey + 16 };
-                    g2.fillPolygon(wxL, wyL, 3);
-                    
-                    int[] wxR = { ex + 20, ex + 36, ex + 20 };
-                    int[] wyR = { ey + 12, ey + 4 + wingY, ey + 16 };
-                    g2.fillPolygon(wxR, wyR, 3);
-                    
-                    g2.setColor(new Color(255, 60, 60)); // Glowing eyes
-                    g2.fillRect(ex + 9, ey + 10, 2, 2);
-                    g2.fillRect(ex + 13, ey + 10, 2, 2);
+                // Dibujar sprites de enemigos (con fallback procedimental)
+                boolean enemyFacingLeft = ex > hx;
+                BufferedImage enemyImg = AssetManager.getInstance().getEnemySprite(type, isStunned ? "hurt" : "run", time, enemyFacingLeft);
+                if (enemyImg != null) {
+                    int drawW = 64;
+                    int drawH = 64;
+                    int drawX = ex + (32 - drawW) / 2;
+                    int drawY = ey + 32 - drawH; // Alinear base
+                    g2.drawImage(enemyImg, drawX, drawY, drawW, drawH, null);
+                } else {
+                    if ("Swordsman".equalsIgnoreCase(type)) {
+                        // Skeleton Swordsman
+                        g2.setColor(new Color(240, 238, 233)); // Bony white
+                        g2.fillOval(ex + 4, ey, 16, 16); // Skull
+                        g2.drawOval(ex + 4, ey, 16, 16);
+                        g2.setColor(new Color(20, 20, 20));
+                        g2.fillRect(ex + 8, ey + 6, 2, 2); // Eyes
+                        g2.fillRect(ex + 14, ey + 6, 2, 2);
+                        
+                        g2.setColor(new Color(240, 238, 233));
+                        g2.fillRect(ex + 10, ey + 16, 4, 12); // Spine
+                        g2.drawLine(ex + 6, ey + 28, ex + 6, ey + 32); // Left leg
+                        g2.drawLine(ex + 18, ey + 28, ex + 18, ey + 32); // Right leg
+                        
+                        g2.setColor(new Color(130, 130, 140)); // Rusty Sword
+                        g2.drawLine(ex + 14, ey + 20, ex + 28, ey + 14);
+                    } else if ("Shielder".equalsIgnoreCase(type)) {
+                        // Shield Goblin
+                        g2.setColor(new Color(46, 139, 87)); // Goblin green
+                        g2.fillOval(ex + 2, ey + 4, 20, 20); // Head/body
+                        g2.setColor(new Color(220, 20, 60)); // Red eyes
+                        g2.fillRect(ex + 6, ey + 10, 3, 3);
+                        g2.fillRect(ex + 14, ey + 10, 3, 3);
+                        
+                        // Large wooden shield
+                        g2.setColor(new Color(139, 69, 19));
+                        g2.fillRoundRect(ex - 4, ey + 2, 8, 26, 4, 4);
+                        g2.setColor(new Color(192, 192, 192));
+                        g2.fillOval(ex - 2, ey + 11, 4, 4); // Shield boss
+                    } else if ("Flyer".equalsIgnoreCase(type)) {
+                        // Plagued Gargoyle / Bat
+                        g2.setColor(new Color(90, 34, 139)); // Violet
+                        g2.fillOval(ex + 4, ey + 4, 16, 16); // Body
+                        
+                        // Flapping wings
+                        int wingY = (int)(Math.sin(time * 0.4) * 8);
+                        g2.setColor(new Color(75, 20, 110));
+                        int[] wxL = { ex + 4, ex - 12, ex + 4 };
+                        int[] wyL = { ey + 12, ey + 4 + wingY, ey + 16 };
+                        g2.fillPolygon(wxL, wyL, 3);
+                        
+                        int[] wxR = { ex + 20, ex + 36, ex + 20 };
+                        int[] wyR = { ey + 12, ey + 4 + wingY, ey + 16 };
+                        g2.fillPolygon(wxR, wyR, 3);
+                        
+                        g2.setColor(new Color(255, 60, 60)); // Glowing eyes
+                        g2.fillRect(ex + 9, ey + 10, 2, 2);
+                        g2.fillRect(ex + 13, ey + 10, 2, 2);
+                    }
                 }
 
                 // Stun overlay (decorator stars)
@@ -1035,8 +1142,8 @@ public class GameplayView implements View {
             // Weapon indicators
             g2.setFont(new Font("Monospaced", Font.PLAIN, 12));
             g2.setColor(new Color(200, 200, 200));
-            g2.drawString("[A/D] Move | [SPACE] Jump | [SHIFT] Dash | [J] Attack", 20, getHeight() - 40);
-            g2.drawString("[1] Sword (Fast) | [2] Hammer (Stun) | [3] Bow (8-Way)", 20, getHeight() - 20);
+            g2.drawString("[A/D] Move | [SPACE] Jump | [SHIFT] Dash | [Click Izq] Attack", 20, getHeight() - 40);
+            g2.drawString("[1] Sword (Fast) | [2] Hammer (Stun) | [3] Bow (Aim)", 20, getHeight() - 20);
         }
 
         private Color mixColors(Color c1, Color c2, float ratio) {

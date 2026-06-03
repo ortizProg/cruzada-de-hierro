@@ -10,6 +10,7 @@ import com.juego.physics.Collider;
 public class Arrow implements Collidable {
     private float x, y;
     private float dirX, dirY;
+    private float vx, vy;
     private float speed;
     private int damage;
     private Collider hitBox;
@@ -36,6 +37,8 @@ public class Arrow implements Collidable {
             this.dirY = 0;
         }
 
+        this.vx = this.dirX * speed;
+        this.vy = this.dirY * speed;
         this.speed = speed;
         this.damage = damage;
         this.active = true;
@@ -56,8 +59,17 @@ public class Arrow implements Collidable {
     }
 
     private void calculateTrajectory() {
-        this.x += dirX * speed;
-        this.y += dirY * speed;
+        // Caída por gravedad (0.18f por frame)
+        this.vy += 0.18f;
+        this.x += vx;
+        this.y += vy;
+
+        // Actualizar la dirección para que la rotación apunte hacia donde vuela
+        float length = (float) Math.sqrt(vx * vx + vy * vy);
+        if (length > 0) {
+            this.dirX = vx / length;
+            this.dirY = vy / length;
+        }
     }
 
     @Override
@@ -77,5 +89,13 @@ public class Arrow implements Collidable {
     
     public int getDamage() {
         return damage;
+    }
+
+    public float getDirX() {
+        return dirX;
+    }
+
+    public float getDirY() {
+        return dirY;
     }
 }
